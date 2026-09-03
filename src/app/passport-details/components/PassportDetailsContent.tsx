@@ -11,6 +11,7 @@ import MRZAnalysisTab from './MRZAnalysisTab';
 import DateConversionsTab from './DateConversionsTab';
 import { passportService } from '@/lib/services/passportService';
 import type { EnrichedPassport } from '@/lib/passportData';
+import PhotoUpload from './PhotoUpload';
 
 type TabId = 'overview' | 'mrz' | 'dates' | 'notes';
 
@@ -41,6 +42,7 @@ export default function PassportDetailsContent() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditFormData>({
     holderName: '',
     holderNameAr: '',
@@ -77,6 +79,13 @@ export default function PassportDetailsContent() {
   useEffect(() => {
     loadPassport();
   }, [loadPassport]);
+
+  useEffect(() => {
+    if (passport) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setPhotoUrl((passport as any).photo_url ?? null);
+    }
+  }, [passport]);
 
   function openEdit() {
     if (!passport) return;
@@ -248,16 +257,25 @@ export default function PassportDetailsContent() {
                   </p>
                 )}
               </div>
+
               <Shield size={24} className="text-accent/70" />
             </div>
 
             <div className="flex gap-5 relative z-10">
-              <div className="w-20 h-24 rounded-xl bg-white/10 border-2 border-white/20 flex items-center justify-center flex-shrink-0">
-                <div className="text-center">
-                  <div className="w-10 h-10 rounded-full bg-white/20 mx-auto mb-1.5" />
-                  <div className="w-12 h-2 rounded-full bg-white/10 mx-auto mb-1" />
-                  <div className="w-8 h-1.5 rounded-full bg-white/10 mx-auto" />
-                </div>
+              <div className="w-20 h-24 rounded-xl bg-white/10 border-2 border-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {photoUrl ? (
+                  <img
+                    src={photoUrl}
+                    alt={`Photo of ${passport.holderName}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-center">
+                    <div className="w-10 h-10 rounded-full bg-white/20 mx-auto mb-1.5" />
+                    <div className="w-12 h-2 rounded-full bg-white/10 mx-auto mb-1" />
+                    <div className="w-8 h-1.5 rounded-full bg-white/10 mx-auto" />
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 space-y-3">
@@ -395,6 +413,16 @@ export default function PassportDetailsContent() {
                         <span className="text-xs font-semibold text-foreground text-right max-w-[60%]">{row.value}</span>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Photo Upload */}
+                  <div className="mt-5 pt-4 border-t border-border">
+                    <PhotoUpload
+                      passportId={passport.id}
+                      currentPhotoUrl={photoUrl}
+                      holderName={passport.holderName}
+                      onPhotoUpdated={(url) => setPhotoUrl(url)}
+                    />
                   </div>
                 </div>
 

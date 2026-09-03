@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ScanLine, FileText, Database, ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, Bell, LogOut, User, History, Upload, ClipboardList, Download, BarChart2, Users, BookOpen,  } from 'lucide-react';
+import { ScanLine, FileText, Database, ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, Bell, LogOut, User, History, Upload, ClipboardList, Download, BarChart2, Users, BookOpen, LayoutDashboard } from 'lucide-react';
 import AppLogo from '@/components/ui/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -12,6 +12,13 @@ import Icon from '@/components/ui/AppIcon';
 
 
 const navItems = [
+  {
+    key: 'nav-dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    href: '/dashboard',
+    badge: null,
+  },
   {
     key: 'nav-scanner',
     label: 'Passport Scanner',
