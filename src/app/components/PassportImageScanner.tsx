@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, ScanLine, AlertCircle, CheckCircle2, RefreshCw, ImageIcon, Info, Loader2, X } from 'lucide-react';
+import { Upload, ScanLine, AlertCircle, CheckCircle2, RefreshCw, ImageIcon, Info, Loader2, X, Sparkles } from 'lucide-react';
 import { PassportFormData } from './PassportScannerContent';
 
 interface PassportImageScannerProps {
@@ -14,125 +14,30 @@ interface ScanResult {
   value: string;
 }
 
-// MRZ check digit calculation
-function mrzCheckDigit(str: string): number {
-  const weights = [7, 3, 1];
-  const chars: Record<string, number> = {
-    '<': 0, '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
-    '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
-    A: 10, B: 11, C: 12, D: 13, E: 14, F: 15, G: 16, H: 17,
-    I: 18, J: 19, K: 20, L: 21, M: 22, N: 23, O: 24, P: 25,
-    Q: 26, R: 27, S: 28, T: 29, U: 30, V: 31, W: 32, X: 33,
-    Y: 34, Z: 35,
-  };
-  let sum = 0;
-  for (let i = 0; i < str.length; i++) {
-    sum += (chars[str[i]] ?? 0) * weights[i % 3];
-  }
-  return sum % 10;
-}
+const FIELD_LABELS: Partial<Record<keyof PassportFormData, string>> = {
+  documentType: 'Document Type',
+  issuingCountry: 'Issuing Country',
+  holderName: 'Holder Name',
+  passportNumber: 'Passport Number',
+  nationality: 'Nationality',
+  dateOfBirth: 'Date of Birth',
+  sex: 'Sex',
+  expiryDate: 'Expiry Date',
+  issueDate: 'Issue Date',
+  placeOfBirth: 'Place of Birth',
+  issuingAuthority: 'Issuing Authority',
+  personalNumber: 'Personal Number',
+  mrzLine1: 'MRZ Line 1',
+  mrzLine2: 'MRZ Line 2',
+};
 
-// Parse MRZ TD3 lines
-function parseMRZLines(line1: string, line2: string): Partial<PassportFormData> {
-  const result: Partial<PassportFormData> = {};
-  if (line1.length !== 44 || line2.length !== 44) return result;
-
-  try {
-    // Line 1
-    result.documentType = line1[0] === 'P' ? 'P' : line1.substring(0, 2).trim();
-    result.issuingCountry = line1.substring(2, 5).replace(/</g, '');
-    const namePart = line1.substring(5).split('<<');
-    const surname = namePart[0]?.replace(/</g, ' ').trim() || '';
-    const given = namePart[1]?.replace(/</g, ' ').trim() || '';
-    result.holderName = given ? `${given} ${surname}`.trim() : surname;
-
-    // Line 2
-    result.passportNumber = line2.substring(0, 9).replace(/</g, '');
-    result.nationality = line2.substring(10, 13).replace(/</g, '');
-
-    const dob = line2.substring(13, 19);
-    if (/^\d{6}$/.test(dob)) {
-      const yr = parseInt(dob.substring(0, 2));
-      const mo = dob.substring(2, 4);
-      const dy = dob.substring(4, 6);
-      const fullYr = yr > 30 ? `19${String(yr).padStart(2, '0')}` : `20${String(yr).padStart(2, '0')}`;
-      result.dateOfBirth = `${fullYr}-${mo}-${dy}`;
-    }
-
-    const sex = line2[20];
-    result.sex = sex === 'F' ? 'F' : sex === 'M' ? 'M' : 'X';
-
-    const exp = line2.substring(21, 27);
-    if (/^\d{6}$/.test(exp)) {
-      const yr = parseInt(exp.substring(0, 2));
-      const mo = exp.substring(2, 4);
-      const dy = exp.substring(4, 6);
-      const fullYr = yr >= 0 && yr <= 50 ? `20${String(yr).padStart(2, '0')}` : `19${String(yr).padStart(2, '0')}`;
-      result.expiryDate = `${fullYr}-${mo}-${dy}`;
-    }
-
-    result.personalNumber = line2.substring(28, 42).replace(/</g, '').trim();
-    result.mrzLine1 = line1;
-    result.mrzLine2 = line2;
-  } catch {
-    // parsing failed
-  }
-
-  return result;
-}
-
-// Extract MRZ-like text from canvas pixel data using brightness thresholding
-function extractTextFromCanvas(canvas: HTMLCanvasElement): string[] {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return [];
-
-  const { width, height } = canvas;
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-
-  // Look for dark regions in the bottom 30% of the image (MRZ zone)
-  const mrzStartY = Math.floor(height * 0.7);
-  const rows: number[][] = [];
-
-  for (let y = mrzStartY; y < height; y++) {
-    const row: number[] = [];
-    for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
-      const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
-      row.push(brightness < 128 ? 1 : 0); // 1 = dark pixel
-    }
-    rows.push(row);
-  }
-
-  // Count dark pixel density per row to find MRZ lines
-  const densities = rows.map(row => row.reduce((a, b) => a + b, 0) / row.length);
-  const mrzRows = densities.filter(d => d > 0.05 && d < 0.6);
-
-  return mrzRows.length >= 2 ? ['MRZ_DETECTED'] : [];
-}
-
-// Attempt to detect passport fields from image metadata and filename
-function analyzeImageFile(file: File): Partial<PassportFormData> {
-  const result: Partial<PassportFormData> = {};
-  const name = file.name.toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-  // Try to detect passport number pattern in filename (e.g. A12345678)
-  const passportMatch = name.match(/([A-Z]{1,2}\d{6,8})/);
-  if (passportMatch) {
-    result.passportNumber = passportMatch[1];
-  }
-
-  // Try to detect country code in filename
-  const countryCodes = ['SAU', 'ARE', 'QAT', 'KWT', 'BHR', 'OMN', 'EGY', 'MAR', 'JOR', 'PAK', 'IND', 'GBR', 'USA', 'DEU', 'FRA'];
-  for (const code of countryCodes) {
-    if (name.includes(code)) {
-      result.issuingCountry = code;
-      result.nationality = code;
-      break;
-    }
-  }
-
-  return result;
+async function fileToBase64DataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+  });
 }
 
 export default function PassportImageScanner({ onFieldsExtracted }: PassportImageScannerProps) {
@@ -143,76 +48,71 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [mrzDetected, setMrzDetected] = useState(false);
   const [scanDone, setScanDone] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [extractedFields, setExtractedFields] = useState<Partial<PassportFormData>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
 
   const processImage = useCallback(async (file: File) => {
     setIsScanning(true);
     setScanDone(false);
     setScanResults([]);
     setMrzDetected(false);
+    setScanError(null);
 
     const url = URL.createObjectURL(file);
     setImageUrl(url);
 
-    await new Promise(resolve => setTimeout(resolve, 800));
+    try {
+      // Convert image to base64 data URI
+      const imageBase64 = await fileToBase64DataUri(file);
 
-    // Step 1: Analyze filename/metadata
-    const fileFields = analyzeImageFile(file);
+      // Call AI-powered passport scan API
+      const response = await fetch('/api/passport-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64 }),
+      });
 
-    // Step 2: Load image onto canvas and analyze
-    const img = new window.Image();
-    img.src = url;
+      const data = await response.json();
 
-    await new Promise<void>((resolve) => {
-      img.onload = () => {
-        if (canvasRef.current) {
-          const canvas = canvasRef.current;
-          canvas.width = img.naturalWidth;
-          canvas.height = img.naturalHeight;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(img, 0, 0);
-            const detected = extractTextFromCanvas(canvas);
-            if (detected.includes('MRZ_DETECTED')) {
-              setMrzDetected(true);
-            }
-          }
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'Scan failed');
+      }
+
+      const fields: Partial<PassportFormData> = data.fields || {};
+
+      // Build scan results for display
+      const results: ScanResult[] = [];
+      for (const [key, value] of Object.entries(fields)) {
+        if (value && FIELD_LABELS[key as keyof PassportFormData]) {
+          const isMrz = key === 'mrzLine1' || key === 'mrzLine2';
+          results.push({
+            field: key as keyof PassportFormData,
+            label: FIELD_LABELS[key as keyof PassportFormData]!,
+            value: isMrz ? `${String(value).substring(0, 20)}…` : String(value),
+            confidence: 'high',
+          });
         }
-        resolve();
-      };
-      img.onerror = () => resolve();
-    });
+      }
 
-    await new Promise(resolve => setTimeout(resolve, 600));
+      // Detect MRZ
+      if (fields.mrzLine1 || fields.mrzLine2) {
+        setMrzDetected(true);
+      }
 
-    // Build scan results from what we found
-    const results: ScanResult[] = [];
-    const allFields: Partial<PassportFormData> = { ...fileFields };
-
-    if (fileFields.passportNumber) {
-      results.push({ field: 'passportNumber', label: 'Passport Number', value: fileFields.passportNumber, confidence: 'medium' });
+      setScanResults(results);
+      setExtractedFields(fields);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Scan failed';
+      setScanError(message);
+    } finally {
+      setIsScanning(false);
+      setScanDone(true);
     }
-    if (fileFields.issuingCountry) {
-      results.push({ field: 'issuingCountry', label: 'Issuing Country', value: fileFields.issuingCountry, confidence: 'medium' });
-      results.push({ field: 'nationality', label: 'Nationality', value: fileFields.nationality!, confidence: 'medium' });
-    }
-
-    // Always set document type default
-    allFields.documentType = 'P';
-
-    setScanResults(results);
-    setExtractedFields(allFields);
-    setIsScanning(false);
-    setScanDone(true);
   }, []);
 
   const handleFileSelect = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) {
-      return;
-    }
+    if (!file.type.startsWith('image/')) return;
     setImageFile(file);
     processImage(file);
   }, [processImage]);
@@ -247,6 +147,7 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
     setScanDone(false);
     setMrzDetected(false);
     setExtractedFields({});
+    setScanError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -266,12 +167,12 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
     <div className="space-y-5">
       {/* Info Banner */}
       <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg">
-        <Info size={16} className="text-primary mt-0.5 flex-shrink-0" />
+        <Sparkles size={16} className="text-primary mt-0.5 flex-shrink-0" />
         <div>
-          <p className="text-sm font-medium text-foreground">Frontend-Only Image Scan</p>
+          <p className="text-sm font-medium text-foreground">AI-Powered Passport Scan</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Upload a passport image to extract available fields. This uses client-side analysis — no data is sent to any server.
-            For best results, use a clear, well-lit scan. You can manually complete any fields after scanning.
+            Upload a passport image and our AI will automatically extract all visible fields including MRZ data.
+            For best results, use a clear, well-lit scan with all text visible.
           </p>
         </div>
       </div>
@@ -297,7 +198,7 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
               <div className="text-center">
                 <p className="text-sm font-semibold text-foreground">Drop passport image here</p>
                 <p className="text-xs text-muted-foreground mt-1">or click to browse files</p>
-                <p className="text-xs text-muted-foreground mt-2">Supports JPG, PNG, WEBP, PDF images</p>
+                <p className="text-xs text-muted-foreground mt-2">Supports JPG, PNG, WEBP</p>
               </div>
               <input
                 ref={fileInputRef}
@@ -325,7 +226,6 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
               <div className="relative bg-muted/30 flex items-center justify-center min-h-[220px] p-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  ref={imgRef}
                   src={imageUrl}
                   alt="Uploaded passport scan"
                   className="max-h-[220px] max-w-full object-contain rounded-md shadow-sm"
@@ -336,7 +236,7 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
                       <ScanLine size={32} className="text-primary animate-pulse" />
                       <div className="absolute inset-0 border-2 border-primary/40 rounded animate-ping" />
                     </div>
-                    <p className="text-sm font-medium text-foreground">Analyzing image...</p>
+                    <p className="text-sm font-medium text-foreground">AI scanning passport...</p>
                     <div className="w-40 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-primary rounded-full animate-[scan_1.4s_ease-in-out_infinite]" style={{ width: '60%' }} />
                     </div>
@@ -345,7 +245,6 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
               </div>
             </div>
           )}
-          <canvas ref={canvasRef} className="hidden" />
         </div>
 
         {/* Scan Results */}
@@ -356,19 +255,39 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
                 <ScanLine size={22} className="text-muted-foreground" />
               </div>
               <p className="text-sm font-medium text-foreground">No image scanned yet</p>
-              <p className="text-xs text-muted-foreground">Upload a passport image to begin extraction</p>
+              <p className="text-xs text-muted-foreground">Upload a passport image to begin AI extraction</p>
             </div>
           )}
 
           {isScanning && (
             <div className="card-surface p-6 flex flex-col items-center justify-center gap-3 min-h-[280px]">
               <Loader2 size={28} className="text-primary animate-spin" />
-              <p className="text-sm font-medium text-foreground">Scanning passport image...</p>
-              <p className="text-xs text-muted-foreground">Analyzing pixel data and detecting fields</p>
+              <p className="text-sm font-medium text-foreground">AI is reading your passport...</p>
+              <p className="text-xs text-muted-foreground">Extracting all visible fields</p>
             </div>
           )}
 
-          {scanDone && (
+          {scanDone && scanError && (
+            <div className="card-surface p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={16} className="text-expired" />
+                <span className="text-sm font-semibold text-foreground">Scan Failed</span>
+              </div>
+              <div className="bg-expired/8 border border-expired/20 rounded-lg p-3">
+                <p className="text-xs text-expired">{scanError}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="btn-secondary w-full justify-center"
+              >
+                <RefreshCw size={14} />
+                Try Again
+              </button>
+            </div>
+          )}
+
+          {scanDone && !scanError && (
             <div className="card-surface p-5 space-y-4">
               {/* Scan Summary */}
               <div className="flex items-center justify-between">
@@ -393,28 +312,31 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
               }`}>
                 <ScanLine size={13} />
                 {mrzDetected
-                  ? 'MRZ zone detected in image — use MRZ Parser tab for full extraction'
-                  : 'No MRZ zone detected — manual entry recommended'}
+                  ? 'MRZ data extracted from image' :'No MRZ detected — visual fields extracted only'}
               </div>
 
               {/* Extracted Fields */}
               {scanResults.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Extracted Fields</p>
-                  {scanResults.map((r, i) => (
-                    <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg border text-xs ${confidenceColor(r.confidence)}`}>
-                      <div className="flex items-center gap-2">
-                        {confidenceIcon(r.confidence)}
-                        <span className="font-medium">{r.label}</span>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Extracted Fields ({scanResults.length})
+                  </p>
+                  <div className="max-h-[240px] overflow-y-auto space-y-1.5 pr-1">
+                    {scanResults.map((r, i) => (
+                      <div key={i} className={`flex items-center justify-between px-3 py-2 rounded-lg border text-xs ${confidenceColor(r.confidence)}`}>
+                        <div className="flex items-center gap-2">
+                          {confidenceIcon(r.confidence)}
+                          <span className="font-medium">{r.label}</span>
+                        </div>
+                        <span className="font-mono font-semibold truncate max-w-[120px]">{r.value}</span>
                       </div>
-                      <span className="font-mono font-semibold">{r.value}</span>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-xs text-muted-foreground">No fields could be automatically extracted from this image.</p>
-                  <p className="text-xs text-muted-foreground mt-1">Please fill in the form fields manually.</p>
+                  <p className="text-xs text-muted-foreground">No fields could be extracted from this image.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Please ensure the image is clear and try again, or fill in the form manually.</p>
                 </div>
               )}
 
@@ -424,30 +346,26 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
                 <ul className="text-xs text-muted-foreground space-y-1">
                   <li className="flex items-start gap-1.5">
                     <span className="text-primary font-bold mt-0.5">1.</span>
-                    Click "Apply to Form" to pre-fill detected fields
+                    Click "Apply to Form" to pre-fill all detected fields
                   </li>
                   <li className="flex items-start gap-1.5">
                     <span className="text-primary font-bold mt-0.5">2.</span>
-                    Switch to "Manual Entry" tab to review and complete all fields
+                    Switch to "Manual Entry" tab to review and complete remaining fields
                   </li>
-                  {mrzDetected && (
-                    <li className="flex items-start gap-1.5">
-                      <span className="text-primary font-bold mt-0.5">3.</span>
-                      Use "MRZ Parser" tab to paste the MRZ lines for full extraction
-                    </li>
-                  )}
                 </ul>
               </div>
 
               {/* Apply Button */}
-              <button
-                type="button"
-                onClick={handleApplyFields}
-                className="btn-primary w-full justify-center"
-              >
-                <CheckCircle2 size={15} />
-                Apply to Form
-              </button>
+              {scanResults.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleApplyFields}
+                  className="btn-primary w-full justify-center"
+                >
+                  <CheckCircle2 size={15} />
+                  Apply to Form
+                </button>
+              )}
             </div>
           )}
         </div>
