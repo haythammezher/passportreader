@@ -144,6 +144,10 @@ export default function PassportDetailsContent() {
 
   async function handleDelete() {
     if (!passport) return;
+    if (!passportId) {
+      setDeleteError('Cannot delete a demo record. Please open a real passport record from the records list.');
+      return;
+    }
     setIsDeleting(true);
     setDeleteError(null);
     const success = await passportService.delete(passport.id);

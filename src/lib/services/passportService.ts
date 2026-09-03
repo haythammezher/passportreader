@@ -124,11 +124,14 @@ export const passportService = {
   async delete(id: string): Promise<boolean> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    if (!user) {
+      console.error('Delete failed: user not authenticated');
+      return false;
+    }
 
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('passport_records')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', id)
       .eq('user_id', user.id);
 
@@ -136,6 +139,12 @@ export const passportService = {
       console.error('Error deleting passport record:', error.message);
       return false;
     }
+
+    if (count === 0) {
+      console.error('Delete failed: record not found or does not belong to current user');
+      return false;
+    }
+
     return true;
   },
 
