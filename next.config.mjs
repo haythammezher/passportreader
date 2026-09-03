@@ -2,6 +2,7 @@ import { imageHosts } from './image-hosts.config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  allowedDevOrigins: ['passportre6161.builtwithrocket.new'],
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
   typescript: {
