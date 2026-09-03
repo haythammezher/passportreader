@@ -1,23 +1,153 @@
 'use client';
-import React, { useState } from 'react';
-import { ArrowLeft, Edit2, Printer, Download, Share2, User, Globe, Calendar, Hash, MapPin, FileText, Shield, Clock, StickyNote, ChevronRight,  } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { ArrowLeft, Edit2, Printer, Download, Share2, User, Globe, Calendar, Hash, MapPin, FileText, Shield, Clock, StickyNote, ChevronRight, X, Save, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { enrichedPassports } from '@/lib/passportData';
 import { gregorianToHijri, calculateDaysRemaining, getPassportStatus } from '@/lib/hijri';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ValidityRing from './ValidityRing';
 import MRZAnalysisTab from './MRZAnalysisTab';
 import DateConversionsTab from './DateConversionsTab';
-import Icon from '@/components/ui/AppIcon';
-
+import { passportService } from '@/lib/services/passportService';
+import type { EnrichedPassport } from '@/lib/passportData';
 
 type TabId = 'overview' | 'mrz' | 'dates' | 'notes';
 
-// Use first record as the default detail view
-const passport = enrichedPassports[0];
+interface EditFormData {
+  holderName: string;
+  holderNameAr: string;
+  passportNumber: string;
+  nationality: string;
+  nationalityCode: string;
+  sex: 'M' | 'F';
+  dateOfBirth: string;
+  placeOfBirth: string;
+  issueDate: string;
+  expiryDate: string;
+  issuingCountry: string;
+  issuingAuthority: string;
+  personalNumber: string;
+  notes: string;
+}
 
 export default function PassportDetailsContent() {
+  const searchParams = useSearchParams();
+  const passportId = searchParams.get('id');
+
+  const [passport, setPassport] = useState<EnrichedPassport | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('overview');
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EditFormData>({
+    holderName: '',
+    holderNameAr: '',
+    passportNumber: '',
+    nationality: '',
+    nationalityCode: '',
+    sex: 'M',
+    dateOfBirth: '',
+    placeOfBirth: '',
+    issueDate: '',
+    expiryDate: '',
+    issuingCountry: '',
+    issuingAuthority: '',
+    personalNumber: '',
+    notes: '',
+  });
+
+  const loadPassport = useCallback(async () => {
+    setLoading(true);
+    if (passportId) {
+      const record = await passportService.getById(passportId);
+      if (record) {
+        setPassport(record);
+      } else {
+        // fallback to mock
+        setPassport(enrichedPassports[0]);
+      }
+    } else {
+      setPassport(enrichedPassports[0]);
+    }
+    setLoading(false);
+  }, [passportId]);
+
+  useEffect(() => {
+    loadPassport();
+  }, [loadPassport]);
+
+  function openEdit() {
+    if (!passport) return;
+    setEditForm({
+      holderName: passport.holderName,
+      holderNameAr: passport.holderNameAr ?? '',
+      passportNumber: passport.passportNumber,
+      nationality: passport.nationality,
+      nationalityCode: passport.nationalityCode,
+      sex: passport.sex,
+      dateOfBirth: passport.dateOfBirth,
+      placeOfBirth: passport.placeOfBirth,
+      issueDate: passport.issueDate,
+      expiryDate: passport.expiryDate,
+      issuingCountry: passport.issuingCountry,
+      issuingAuthority: passport.issuingAuthority,
+      personalNumber: passport.personalNumber ?? '',
+      notes: passport.notes ?? '',
+    });
+    setSaveError(null);
+    setIsEditOpen(true);
+  }
+
+  async function handleSave() {
+    if (!passport) return;
+    setIsSaving(true);
+    setSaveError(null);
+    const updated = await passportService.update(passport.id, {
+      holderName: editForm.holderName,
+      holderNameAr: editForm.holderNameAr || undefined,
+      passportNumber: editForm.passportNumber,
+      nationality: editForm.nationality,
+      nationalityCode: editForm.nationalityCode,
+      sex: editForm.sex,
+      dateOfBirth: editForm.dateOfBirth,
+      placeOfBirth: editForm.placeOfBirth,
+      issueDate: editForm.issueDate,
+      expiryDate: editForm.expiryDate,
+      issuingCountry: editForm.issuingCountry,
+      issuingAuthority: editForm.issuingAuthority,
+      personalNumber: editForm.personalNumber || undefined,
+      notes: editForm.notes || undefined,
+    });
+    setIsSaving(false);
+    if (updated) {
+      setPassport(updated);
+      setIsEditOpen(false);
+    } else {
+      setSaveError('Failed to save changes. Please try again.');
+    }
+  }
+
+  function handleField(field: keyof EditFormData, value: string) {
+    setEditForm(prev => ({ ...prev, [field]: value }));
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!passport) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Passport record not found.</p>
+      </div>
+    );
+  }
 
   const expiryDate = new Date(passport.expiryDate);
   const issueDate = new Date(passport.issueDate);
@@ -93,7 +223,7 @@ export default function PassportDetailsContent() {
                 <Share2 size={14} />
                 Share
               </button>
-              <button className="btn-primary" type="button">
+              <button className="btn-primary" type="button" onClick={openEdit}>
                 <Edit2 size={14} />
                 Edit Record
               </button>
@@ -202,10 +332,10 @@ export default function PassportDetailsContent() {
                 { icon: FileText, label: 'MRZ Validity', value: passport.mrzValid ? 'All check digits valid' : 'Check digit error', mono: false, alert: !passport.mrzValid },
                 { icon: Clock, label: 'Record Created', value: new Date(passport.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), mono: false },
               ].map((item, i) => {
-                const Icon = item.icon;
+                const ItemIcon = item.icon;
                 return (
                   <div key={`detail-stat-${i}`} className="flex items-start gap-2.5">
-                    <Icon size={14} className={`mt-0.5 flex-shrink-0 ${item.alert ? 'text-expired' : 'text-muted-foreground'}`} />
+                    <ItemIcon size={14} className={`mt-0.5 flex-shrink-0 ${item.alert ? 'text-expired' : 'text-muted-foreground'}`} />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs text-muted-foreground">{item.label}</p>
                       <p className={`text-sm font-semibold truncate ${item.alert ? 'text-expired' : 'text-foreground'} ${item.mono ? 'font-mono-data' : ''}`}>
@@ -224,7 +354,7 @@ export default function PassportDetailsContent() {
           <div className="border-b border-border px-5">
             <div className="flex gap-0">
               {tabs.map(tab => {
-                const Icon = tab.icon;
+                const TabIcon = tab.icon;
                 return (
                   <button
                     key={`tab-${tab.id}`}
@@ -234,7 +364,7 @@ export default function PassportDetailsContent() {
                       activeTab === tab.id ? 'tab-active' : 'tab-inactive'
                     }`}
                   >
-                    <Icon size={14} />
+                    <TabIcon size={14} />
                     {tab.label}
                   </button>
                 );
@@ -346,6 +476,223 @@ export default function PassportDetailsContent() {
           </div>
         </div>
       </div>
+
+      {/* Edit Modal */}
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsEditOpen(false)} />
+          <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <Edit2 size={16} className="text-primary" />
+                <h2 className="text-base font-semibold text-foreground">Edit Passport Record</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+              {/* Personal Info */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <User size={12} />
+                  Personal Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Full Name <span className="text-expired">*</span></label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editForm.holderName}
+                      onChange={e => handleField('holderName', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Arabic Name</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      dir="rtl"
+                      value={editForm.holderNameAr}
+                      onChange={e => handleField('holderNameAr', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Sex <span className="text-expired">*</span></label>
+                    <select
+                      className="form-input"
+                      value={editForm.sex}
+                      onChange={e => handleField('sex', e.target.value as 'M' | 'F')}
+                    >
+                      <option value="M">Male</option>
+                      <option value="F">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Date of Birth <span className="text-expired">*</span></label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={editForm.dateOfBirth}
+                      onChange={e => handleField('dateOfBirth', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Place of Birth</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editForm.placeOfBirth}
+                      onChange={e => handleField('placeOfBirth', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Nationality</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editForm.nationality}
+                      onChange={e => handleField('nationality', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Nationality Code (3-letter)</label>
+                    <input
+                      type="text"
+                      maxLength={3}
+                      className="form-input font-mono-data uppercase"
+                      value={editForm.nationalityCode}
+                      onChange={e => handleField('nationalityCode', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Document Info */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <FileText size={12} />
+                  Document Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Passport Number <span className="text-expired">*</span></label>
+                    <input
+                      type="text"
+                      className="form-input font-mono-data uppercase"
+                      value={editForm.passportNumber}
+                      onChange={e => handleField('passportNumber', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Personal Number</label>
+                    <input
+                      type="text"
+                      className="form-input font-mono-data"
+                      value={editForm.personalNumber}
+                      onChange={e => handleField('personalNumber', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Issuing Country (3-letter code)</label>
+                    <input
+                      type="text"
+                      maxLength={3}
+                      className="form-input font-mono-data uppercase"
+                      value={editForm.issuingCountry}
+                      onChange={e => handleField('issuingCountry', e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Issuing Authority</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={editForm.issuingAuthority}
+                      onChange={e => handleField('issuingAuthority', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Issue Date <span className="text-expired">*</span></label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={editForm.issueDate}
+                      onChange={e => handleField('issueDate', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1">Expiry Date <span className="text-expired">*</span></label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      value={editForm.expiryDate}
+                      onChange={e => handleField('expiryDate', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+                  <StickyNote size={12} />
+                  Notes
+                </h3>
+                <textarea
+                  rows={3}
+                  className="form-input resize-none w-full"
+                  placeholder="Add processing notes..."
+                  value={editForm.notes}
+                  onChange={e => handleField('notes', e.target.value)}
+                />
+              </div>
+
+              {saveError && (
+                <p className="text-xs text-expired bg-expired/10 border border-expired/20 rounded-lg px-3 py-2">{saveError}</p>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border flex-shrink-0">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setIsEditOpen(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary flex items-center gap-2"
+                onClick={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  <>
+                    <Save size={14} />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
