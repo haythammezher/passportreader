@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Edit2, Printer, Download, Share2, User, Globe, Calendar, Hash, MapPin, FileText, Shield, Clock, StickyNote, ChevronRight, X, Save, Loader2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Printer, Download, Share2, User, Globe, Calendar, Hash, MapPin, FileText, Shield, Clock, StickyNote, ChevronRight, X, Save, Loader2, Trash2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { enrichedPassports } from '@/lib/passportData';
 import { gregorianToHijri, calculateDaysRemaining, getPassportStatus } from '@/lib/hijri';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -35,6 +35,7 @@ interface EditFormData {
 export default function PassportDetailsContent() {
   const searchParams = useSearchParams();
   const passportId = searchParams.get('id');
+  const router = useRouter();
 
   const [passport, setPassport] = useState<EnrichedPassport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,9 @@ export default function PassportDetailsContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditFormData>({
     holderName: '',
     holderNameAr: '',
@@ -135,6 +139,19 @@ export default function PassportDetailsContent() {
       setIsEditOpen(false);
     } else {
       setSaveError('Failed to save changes. Please try again.');
+    }
+  }
+
+  async function handleDelete() {
+    if (!passport) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    const success = await passportService.delete(passport.id);
+    setIsDeleting(false);
+    if (success) {
+      router.push('/passport-records');
+    } else {
+      setDeleteError('Failed to delete record. Please try again.');
     }
   }
 
@@ -231,6 +248,14 @@ export default function PassportDetailsContent() {
               <button className="btn-secondary" type="button">
                 <Share2 size={14} />
                 Share
+              </button>
+              <button
+                className="btn-secondary text-red-500 hover:text-red-600 hover:border-red-300"
+                type="button"
+                onClick={() => { setDeleteError(null); setIsDeleteOpen(true); }}
+              >
+                <Trash2 size={14} />
+                Delete
               </button>
               <button className="btn-primary" type="button" onClick={openEdit}>
                 <Edit2 size={14} />
@@ -504,6 +529,49 @@ export default function PassportDetailsContent() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <h2 className="text-lg font-semibold text-foreground">Delete Record</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-2">
+              Are you sure you want to delete the passport record for{' '}
+              <span className="font-semibold text-foreground">{passport?.holderName}</span>?
+            </p>
+            <p className="text-sm text-muted-foreground mb-5">
+              This action cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="text-sm text-red-500 mb-4">{deleteError}</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() => setIsDeleteOpen(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-sm font-medium transition-colors disabled:opacity-60"
+                type="button"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {isDeleting ? 'Deleting…' : 'Delete Record'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {isEditOpen && (
