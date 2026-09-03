@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-// @ts-ignore
-import { LLMClient } from '@rocketnew/llm-sdk';
+import { completion } from '@rocketnew/llm-sdk';
 
 const PASSPORT_EXTRACTION_PROMPT = `You are an expert passport data extraction system. Analyze this passport image and extract all visible fields.
 
@@ -43,9 +42,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
     }
 
-    const client = new LLMClient({ provider: 'GEMINI', apiKey });
+    process.env.GEMINI_API_KEY = apiKey;
 
-    const result = await client.chatCompletion({
+    const result = await completion({
       model: 'gemini/gemini-2.5-flash',
       messages: [
         {
