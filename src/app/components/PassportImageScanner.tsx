@@ -102,6 +102,11 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
 
       setScanResults(results);
       setExtractedFields(fields);
+
+      // Automatically apply extracted fields to the form
+      if (Object.keys(fields).length > 0) {
+        onFieldsExtracted(fields);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Scan failed';
       setScanError(message);
@@ -109,7 +114,7 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
       setIsScanning(false);
       setScanDone(true);
     }
-  }, []);
+  }, [onFieldsExtracted]);
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return;
@@ -134,10 +139,6 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleFileSelect(file);
-  };
-
-  const handleApplyFields = () => {
-    onFieldsExtracted(extractedFields);
   };
 
   const handleReset = () => {
@@ -342,28 +343,28 @@ export default function PassportImageScanner({ onFieldsExtracted }: PassportImag
 
               {/* Instructions */}
               <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
-                <p className="text-xs font-semibold text-foreground">Next Steps</p>
+                <p className="text-xs font-semibold text-foreground">Fields Auto-Filled</p>
                 <ul className="text-xs text-muted-foreground space-y-1">
                   <li className="flex items-start gap-1.5">
-                    <span className="text-primary font-bold mt-0.5">1.</span>
-                    Click "Apply to Form" to pre-fill all detected fields
+                    <span className="text-primary font-bold mt-0.5">✓</span>
+                    All detected fields have been automatically applied to the form
                   </li>
                   <li className="flex items-start gap-1.5">
                     <span className="text-primary font-bold mt-0.5">2.</span>
-                    Switch to "Manual Entry" tab to review and complete remaining fields
+                    Switch to "Manual Entry" tab to review and complete any remaining fields
                   </li>
                 </ul>
               </div>
 
-              {/* Apply Button */}
+              {/* Rescan option only — auto-fill already applied */}
               {scanResults.length > 0 && (
                 <button
                   type="button"
-                  onClick={handleApplyFields}
-                  className="btn-primary w-full justify-center"
+                  onClick={handleReset}
+                  className="btn-secondary w-full justify-center"
                 >
-                  <CheckCircle2 size={15} />
-                  Apply to Form
+                  <RefreshCw size={15} />
+                  Scan Another Passport
                 </button>
               )}
             </div>
