@@ -124,11 +124,14 @@ export const passportService = {
   async delete(id: string): Promise<boolean> {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
+    if (!user) {
+      console.error('Delete failed: user not authenticated');
+      return false;
+    }
 
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('passport_records')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', id)
       .eq('user_id', user.id);
 
@@ -136,6 +139,12 @@ export const passportService = {
       console.error('Error deleting passport record:', error.message);
       return false;
     }
+
+    if (count === 0) {
+      console.error('Delete failed: record not found or does not belong to current user');
+      return false;
+    }
+
     return true;
   },
 
@@ -155,6 +164,68 @@ export const passportService = {
       return false;
     }
     return true;
+  },
+
+  async update(id: string, record: Partial<Omit<PassportRecord, 'id' | 'createdAt'>>): Promise<EnrichedPassport | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const partial: Partial<Omit<PassportRow, 'id' | 'created_at'>> = {};
+    if (record.holderName !== undefined) partial.holder_name = record.holderName;
+    if (record.holderNameAr !== undefined) partial.holder_name_ar = record.holderNameAr ?? null;
+    if (record.nationality !== undefined) partial.nationality = record.nationality;
+    if (record.nationalityCode !== undefined) partial.nationality_code = record.nationalityCode;
+    if (record.flagEmoji !== undefined) partial.flag_emoji = record.flagEmoji ?? null;
+    if (record.passportNumber !== undefined) partial.passport_number = record.passportNumber;
+    if (record.documentType !== undefined) partial.document_type = record.documentType;
+    if (record.sex !== undefined) partial.sex = record.sex;
+    if (record.dateOfBirth !== undefined) partial.date_of_birth = record.dateOfBirth;
+    if (record.placeOfBirth !== undefined) partial.place_of_birth = record.placeOfBirth ?? null;
+    if (record.issueDate !== undefined) partial.issue_date = record.issueDate;
+    if (record.expiryDate !== undefined) partial.expiry_date = record.expiryDate;
+    if (record.issuingAuthority !== undefined) partial.issuing_authority = record.issuingAuthority ?? null;
+    if (record.issuingCountry !== undefined) partial.issuing_country = record.issuingCountry;
+    if (record.personalNumber !== undefined) partial.personal_number = record.personalNumber ?? null;
+    if (record.mrzLine1 !== undefined) partial.mrz_line1 = record.mrzLine1 ?? null;
+    if (record.mrzLine2 !== undefined) partial.mrz_line2 = record.mrzLine2 ?? null;
+    if (record.mrzValid !== undefined) partial.mrz_valid = record.mrzValid;
+    if (record.notes !== undefined) partial.notes = record.notes ?? null;
+
+    const { data, error } = await supabase
+      .from('passport_records')
+      .update({ ...partial, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating passport record:', error.message);
+      return null;
+    }
+
+    return enrichPassport(rowToRecord(data as PassportRow));
+  },
+
+  async getById(id: string): Promise<EnrichedPassport | null> {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    const { data, error } = await supabase
+      .from('passport_records')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching passport record:', error.message);
+      return null;
+    }
+
+    return enrichPassport(rowToRecord(data as PassportRow));
   },
 
   subscribeToChanges(callback: (records: EnrichedPassport[]) => void) {

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ScanLine, FileText, Database, ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, Bell, LogOut, User, History, Upload, ClipboardList, Download, BarChart2, Users, BookOpen,  } from 'lucide-react';
+import { ScanLine, FileText, Database, ChevronLeft, ChevronRight, Shield, Settings, HelpCircle, Bell, LogOut, User, History, Upload, ClipboardList, Download, BarChart2, Users, BookOpen, LayoutDashboard } from 'lucide-react';
 import AppLogo from '@/components/ui/AppLogo';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -12,6 +12,13 @@ import Icon from '@/components/ui/AppIcon';
 
 
 const navItems = [
+  {
+    key: 'nav-dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    href: '/dashboard',
+    badge: null,
+  },
   {
     key: 'nav-scanner',
     label: 'Passport Scanner',
@@ -434,7 +441,7 @@ export default function Sidebar() {
 
       {/* User Profile Footer */}
       <div className="relative px-3 py-3" style={{ borderTop: '1px solid rgba(56,189,248,0.1)' }}>
-        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center gap-3 ${collapsed ? 'justify-center flex-col' : ''}`}>
           <div
             className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
             style={{
@@ -451,24 +458,23 @@ export default function Sidebar() {
               <p className="text-xs truncate" style={{ color: '#2A5A80' }}>{displayEmail}</p>
             </div>
           )}
-          {!collapsed && (
-            <button
-              onClick={handleSignOut}
-              className="flex-shrink-0 p-1.5 rounded-md transition-all duration-150"
-              style={{ color: '#2A5A80' }}
-              onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.color = '#F87171';
-                (e.currentTarget as HTMLElement).style.background = 'rgba(248,113,113,0.08)';
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.color = '#2A5A80';
-                (e.currentTarget as HTMLElement).style.background = '';
-              }}
-              title="Sign out"
-            >
-              <LogOut size={15} />
-            </button>
-          )}
+          <button
+            onClick={handleSignOut}
+            className="flex-shrink-0 p-1.5 rounded-md transition-all duration-150 tooltip-wrapper relative"
+            style={{ color: '#2A5A80' }}
+            onMouseEnter={e => {
+              (e.currentTarget as HTMLElement).style.color = '#F87171';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(248,113,113,0.08)';
+            }}
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLElement).style.color = '#2A5A80';
+              (e.currentTarget as HTMLElement).style.background = '';
+            }}
+            title="Sign out"
+          >
+            <LogOut size={15} />
+            {collapsed && <span className="tooltip-label">Sign out</span>}
+          </button>
         </div>
       </div>
 

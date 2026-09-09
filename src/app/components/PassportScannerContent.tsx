@@ -310,11 +310,14 @@ export default function PassportScannerContent() {
   }, [setValue]);
 
   const handleImageScan = useCallback((fields: Partial<PassportFormData>) => {
+    const filledCount = Object.values(fields).filter(v => v).length;
     Object.entries(fields).forEach(([key, value]) => {
       if (value) setValue(key as keyof PassportFormData, value as string);
     });
     setActiveSection('manual');
-    toast.success('Image scan applied', { description: 'Detected fields have been pre-filled. Please review and complete the form.' });
+    toast.success(`Auto-filled ${filledCount} field${filledCount !== 1 ? 's' : ''} from passport scan`, {
+      description: 'Please review the pre-filled data and complete any missing fields.',
+    });
   }, [setValue]);
 
   const handleClearForm = () => {
